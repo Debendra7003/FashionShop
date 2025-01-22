@@ -14,12 +14,10 @@ class UserManager(BaseUserManager):
         """
         if not user_name:
             raise ValueError("Users must have an user_name")
-
         user = self.model(
             user_name=user_name,
             **extra_fields
         )
-
         user.set_password(password)
         user.save(using=self._db)
         return user
