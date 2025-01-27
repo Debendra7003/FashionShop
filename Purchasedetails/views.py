@@ -69,8 +69,8 @@ class PurchaseEntryViewSet(APIView):
 
 
 class PurchaseDetailsViewSet(APIView):
-    # permission_classes = [IsAuthenticated]
-    # renderer_classes = [UserRenderer]
+    permission_classes = [IsAuthenticated]
+    renderer_classes = [UserRenderer]
 
     def post(self, request):
         """
@@ -80,19 +80,19 @@ class PurchaseDetailsViewSet(APIView):
         to_date = request.data.get('to_date')
         party_name = request.data.get('party_name', None)
 
-        # Validate date inputs
-        if not from_date or not to_date:
-            return Response({"message": "Both from_date and to_date are required."}, status=status.HTTP_400_BAD_REQUEST)
+        # Start with a basic query to get all purchase entries
+        query = PurchaseEntry.objects.all()
 
-        try:
-            # Parse dates
-            from_date = datetime.strptime(from_date, '%Y-%m-%d').date()
-            to_date = datetime.strptime(to_date, '%Y-%m-%d').date()
-        except ValueError:
-            return Response({"message": "Invalid date format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+        # Filter by date range if provided
+        if from_date and to_date:
+            try:
+                from_date = datetime.strptime(from_date, '%Y-%m-%d').date()
+                to_date = datetime.strptime(to_date, '%Y-%m-%d').date()
+                query = query.filter(voucher_date__range=[from_date, to_date])
+            except ValueError:
+                return Response({"message": "Invalid date format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Use the correct field for filtering
-        query = PurchaseEntry.objects.filter(voucher_date__range=[from_date, to_date])
+        # Filter by party_name if provided
         if party_name:
             query = query.filter(party_name=party_name)
 
@@ -102,4 +102,3 @@ class PurchaseDetailsViewSet(APIView):
             "message": "Filtered purchase entries retrieved successfully!",
             "data": serializer.data
         }, status=status.HTTP_200_OK)
-

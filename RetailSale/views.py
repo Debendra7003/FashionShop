@@ -19,7 +19,7 @@ from calendar import month_name
 from django.db.models.functions import TruncDate, TruncMonth, TruncYear
 import datetime
 from datetime import date
-
+from datetime import datetime, timedelta, date
 
 
 
@@ -391,75 +391,32 @@ class SalesReportView(APIView):
         }, status=status.HTTP_200_OK)
 
 class CustomerSummaryView(APIView):
-    #  def post(self, request):
-    #     """
-    #     Accept fullname and retrieve total sales summary for that user.
-    #     """
-    #     fullname = request.data.get("fullname")
-        
-        
-    #     if not fullname:
-    #         return Response({"error": "Fullname is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-    #     # Assuming 'customer' is the field that relates to the user (adjust if necessary)
-    #     orders = (
-    #         Order.objects
-    #         .filter(fullname=fullname, items__isnull=False)  # Adjust this based on your model's relationship
-    #         .prefetch_related('items')  # Prefetch related items to optimize queries
-    #     )
-
-    #     total_amount = Decimal('0.00')
-    #     total_quantity = 0
-
-    #     # Loop through orders and calculate total sales
-    #     for order in orders:
-        
-    #         # Add total_price directly from the Order table
-    #         total_amount += order.total_price
-            
-    #         # Add the quantity of items in the order
-    #         for item in order.items.all():
-    #             total_quantity += item.unit  # Summing up item units
-
-    #     # Calculate average amount per unit (if there are any units sold)
-    #     average_amount = total_amount / total_quantity if total_quantity > 0 else Decimal('0.00')
-
-    #     # Prepare the response data
-    #     response_data = {
-    #         "fullname": fullname,
-    #         "total_amount": str(total_amount),  # Ensure the total amount is converted to string for consistency
-    #         "total_quantity": total_quantity,
-    #         "average_amount": str(average_amount)  # Average amount per unit
-    #     }
-
-    #     return Response(response_data, status=status.HTTP_200_OK)
-
-   def post(self, request):
-    """
-    Accept fullname and retrieve sales summary for that user, including all associated phone numbers.
-    """
-    fullname = request.data.get("fullname")
     
-    if not fullname:
-        return Response({"error": "Fullname is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Fetch all orders by the given fullname
-    orders = (
-        Order.objects
-        .filter(fullname=fullname, items__isnull=False)
-        .prefetch_related('items')
-    )
+ def post(self, request):
+    """
+    Accept saletype (optional) and retrieve sales summary grouped by phone number.
+    If no saletype is provided, retrieve sales data for all types.
+    """
+    saletype = request.data.get("saletype", None)
+    
+    # Fetch all orders with or without the saletype filter
+    if saletype:
+        orders = Order.objects.filter(saletype=saletype, items__isnull=False).prefetch_related('items')
+    else:
+        orders = Order.objects.filter(items__isnull=False).prefetch_related('items')
 
     if not orders.exists():
-        return Response({"error": "No orders found for this user."}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"error": "No orders found."}, status=status.HTTP_404_NOT_FOUND)
 
     # Group data by phone_number
     phone_number_data = {}
     for order in orders:
         phone_number = order.phone_number
+        fullname = order.fullname
         if phone_number not in phone_number_data:
             phone_number_data[phone_number] = {
                 "fullname": fullname,
+                "saletype": order.saletype,  # Save the sale type for each entry
                 "phone_number": phone_number,
                 "total_amount": Decimal('0.00'),
                 "total_quantity": 0,
@@ -486,7 +443,6 @@ class CustomerSummaryView(APIView):
         response_data.append(data)
 
     return Response(response_data, status=status.HTTP_200_OK)
-
 
 
     
@@ -956,47 +912,58 @@ class ItemStockSummaryView(APIView):
         return Response({"data": item_data}, status=200)
 
 
-#Sale Tax Report
+
+
 class SalesTaxView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         """
-        Fetch sales summary by date range and tax type.
+        Fetch sales summary optionally filtered by date range and tax type.
         """
         # Extract date range and tax_type from the request
         start_date = request.data.get('start_date')
         end_date = request.data.get('end_date')
         tax_type = request.data.get('tax_type')
 
-        # Validate the inputs
-        if not start_date or not end_date:
-            return Response({"error": "start_date and end_date are required."}, status=status.HTTP_400_BAD_REQUEST)
-
+        # Parse start_date and end_date if provided
         try:
-            start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
-            end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+            if start_date:
+                start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+            if end_date:
+                end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
         except ValueError:
             return Response({"error": "Invalid date format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Filter orders within the date range and by tax type
-        orders = Order.objects.filter(
-            created_at__date__gte=start_date,
-            created_at__date__lte=end_date,
-            tax_type=tax_type
-        )
+        # Filter orders based on provided criteria
+        filters = {}
+        if start_date:
+            filters["created_at__date__gte"] = start_date
+        if end_date:
+            filters["created_at__date__lte"] = end_date
+        if tax_type:
+            filters["tax_type"] = tax_type
 
-        # Group by category and calculate sums
-        summary = orders.values('created_at__date', 'saletype').annotate(
-            total_price_sum=Sum('total_price'),
-            tax_sum=Sum('tax')
-        ).order_by('created_at__date', 'saletype')
+        # Retrieve and aggregate data
+        orders = Order.objects.filter(**filters)
+        summary = (
+            orders.annotate(
+                category_name=F('items__category')  # Fetch `category` from the related `Item`
+            )
+            .values('created_at__date', 'category_name', 'saletype')
+            .annotate(
+                total_price_sum=Sum('total_price'),
+                tax_sum=Sum('tax')
+            )
+            .order_by('created_at__date', 'category_name', 'saletype')
+        )
 
         # Format the response
         data = [
             {
                 "date": entry['created_at__date'],
-                "category": entry['saletype'],
+                "category": entry['category_name'],
+                "sale_type": entry['saletype'],
                 "total_price": entry['total_price_sum'],
                 "total_tax": entry['tax_sum']
             }
@@ -1006,33 +973,87 @@ class SalesTaxView(APIView):
         return Response({"data": data}, status=status.HTTP_200_OK)
 
 #Discount report
+# class SaleDiscountSummaryView(APIView):
+#     permission_classes = [IsAuthenticated]
+#     def post(self, request):
+#         """
+#         Retrieve sales discount summary based on a date range and sale type, 
+#         including customer details.
+#         """
+#         # Get date range and saletype from the request
+#         start_date = request.data.get('start_date',None)
+#         end_date = request.data.get('end_date',None)
+#         saletype = request.data.get('saletype',None)
+
+#         if not start_date or not end_date or not saletype:
+#             return Response({"error": "Start date, end date, and saletype are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+#         try:
+#             # Convert string dates to datetime objects
+#             start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+#             end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+#         except ValueError:
+#             return Response({"error": "Invalid date format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+
+#         # Filter orders by the provided date range and sale type
+#         orders = Order.objects.filter(
+#             created_at__date__range=[start_date, end_date],
+#             saletype=saletype
+#         )
+
+#         sales_summary = []
+
+#         # Group data by date and calculate totals
+#         for date in orders.values('created_at__date').distinct():
+#             date_orders = orders.filter(created_at__date=date['created_at__date'])
+            
+#             total_discount = date_orders.aggregate(Sum('discount'))['discount__sum'] or 0
+
+#             # Collect customer details for the date
+#             customer_details = date_orders.values('fullname', 'phone_number', 'address').distinct()
+
+#             sales_summary.append({
+#                 "date": date['created_at__date'],
+#                 "saletype": saletype,
+#                 "total_discount": total_discount,
+#                 "customer_details": list(customer_details)
+#             })
+
+#         return Response({"sales_summary": sales_summary}, status=status.HTTP_200_OK)
+
+
+
 class SaleDiscountSummaryView(APIView):
     permission_classes = [IsAuthenticated]
+
     def post(self, request):
         """
         Retrieve sales discount summary based on a date range and sale type, 
         including customer details.
         """
-        # Get date range and saletype from the request
-        start_date = request.data.get('start_date')
-        end_date = request.data.get('end_date')
-        saletype = request.data.get('saletype')
+        # Get date range and saletype from the request (optional)
+        start_date = request.data.get('start_date', None)
+        end_date = request.data.get('end_date', None)
+        saletype = request.data.get('saletype', None)
 
-        if not start_date or not end_date or not saletype:
-            return Response({"error": "Start date, end date, and saletype are required."}, status=status.HTTP_400_BAD_REQUEST)
+        # Initialize filters for the query
+        filters = {}
 
-        try:
-            # Convert string dates to datetime objects
-            start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
-            end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
-        except ValueError:
-            return Response({"error": "Invalid date format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+        # Handle optional date filters
+        if start_date and end_date:
+            try:
+                start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+                end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+                filters['created_at__date__range'] = [start_date, end_date]
+            except ValueError:
+                return Response({"error": "Invalid date format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Filter orders by the provided date range and sale type
-        orders = Order.objects.filter(
-            created_at__date__range=[start_date, end_date],
-            saletype=saletype
-        )
+        # Handle optional sale type filter
+        if saletype:
+            filters['saletype'] = saletype
+
+        # Fetch orders based on filters (no filters fetch all orders)
+        orders = Order.objects.filter(**filters)
 
         sales_summary = []
 
@@ -1047,7 +1068,7 @@ class SaleDiscountSummaryView(APIView):
 
             sales_summary.append({
                 "date": date['created_at__date'],
-                "saletype": saletype,
+                "saletype": saletype if saletype else "All Sale Types",  # Show all sale types if saletype is not provided
                 "total_discount": total_discount,
                 "customer_details": list(customer_details)
             })
