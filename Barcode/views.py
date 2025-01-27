@@ -62,7 +62,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 
 class GenerateBarcodeView(APIView):
-    # permission_classes=[IsAuthenticated]
+    permission_classes=[IsAuthenticated]
     def post(self, request, *args, **kwargs):
         try:
             # Parse JSON data
@@ -197,6 +197,7 @@ class GetBarcodeDetailsView(APIView):
 
 
 class BarcodeFetchView(APIView):
+    permission_classes=[IsAuthenticated]
     """
     API endpoint to fetch barcode data by serial number.
     """

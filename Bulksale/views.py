@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from .serializers import PartyInformationSerializer
+from rest_framework.permissions import IsAuthenticated 
 from decimal import Decimal
 from django.shortcuts import get_object_or_404
 from .models import PartyInformation
@@ -12,6 +13,7 @@ from .models import PartyInformation
 
 
 class PartyInformationView(APIView):
+    permission_classes=[IsAuthenticated]
     def post(self, request):
         serializer = PartyInformationSerializer(data=request.data)
         if serializer.is_valid():
@@ -21,7 +23,7 @@ class PartyInformationView(APIView):
     
 
 class CalculatePaymentMethod2AmountView(APIView):
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     # renderer_classes=[UserRenderer]
 
     def post(self,request):
@@ -39,6 +41,7 @@ class CalculatePaymentMethod2AmountView(APIView):
         return Response({"payment_method2_amount": str(payment_amount2)}, status=status.HTTP_200_OK)
     
 class InvoiceDetailView(APIView):
+    permission_classes=[IsAuthenticated]
     def get(self, request, invoicenumber):
         party = get_object_or_404(PartyInformation, invoicenumber=invoicenumber)
         serializer = PartyInformationSerializer(party)

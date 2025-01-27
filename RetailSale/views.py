@@ -6,7 +6,7 @@ from .serializers import OrderSerializer,ItemPreviewSerializer
 from rest_framework.permissions import IsAuthenticated
 from .renderers import UserRenderer  # Assuming this exists for custom rendering
 from .models import Order,ItemPreview,PreviewGrandTotal,StockDeduction
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from django.db.models import F,Sum
 from django.utils import timezone
 from django.db import transaction
@@ -391,61 +391,56 @@ class SalesReportView(APIView):
         }, status=status.HTTP_200_OK)
 
 class CustomerSummaryView(APIView):
-    
- def post(self, request):
-    """
-    Accept saletype (optional) and retrieve sales summary grouped by phone number.
-    If no saletype is provided, retrieve sales data for all types.
-    """
-    saletype = request.data.get("saletype", None)
-    
-    # Fetch all orders with or without the saletype filter
-    if saletype:
-        orders = Order.objects.filter(saletype=saletype, items__isnull=False).prefetch_related('items')
-    else:
-        orders = Order.objects.filter(items__isnull=False).prefetch_related('items')
-
-    if not orders.exists():
-        return Response({"error": "No orders found."}, status=status.HTTP_404_NOT_FOUND)
-
-    # Group data by phone_number
-    phone_number_data = {}
-    for order in orders:
-        phone_number = order.phone_number
-        fullname = order.fullname
-        if phone_number not in phone_number_data:
-            phone_number_data[phone_number] = {
+    permission_classes = [IsAuthenticated] 
+    def post(self, request):
+        """
+        Accept saletype (optional) and retrieve sales summary grouped by phone number.
+        If no saletype is provided, retrieve sales data for all types.
+        """
+        saletype = request.data.get("saletype", None)   
+        # Fetch all orders with or without the saletype filter
+        if saletype:
+            orders = Order.objects.filter(saletype=saletype, items__isnull=False).prefetch_related('items')
+        else:
+            orders = Order.objects.filter(items__isnull=False).prefetch_related('items')
+        if not orders.exists():
+            return Response({"error": "No orders found."}, status=status.HTTP_404_NOT_FOUND)
+        # Group data by phone_number
+        phone_number_data = {}
+        for order in orders:
+            phone_number = order.phone_number
+            fullname = order.fullname
+            if phone_number not in phone_number_data:
+                phone_number_data[phone_number] = {
                 "fullname": fullname,
                 "saletype": order.saletype,  # Save the sale type for each entry
                 "phone_number": phone_number,
                 "total_amount": Decimal('0.00'),
                 "total_quantity": 0,
-            }
+                }   
 
         # Add total_price from the order
-        phone_number_data[phone_number]["total_amount"] += order.total_price
+            phone_number_data[phone_number]["total_amount"] += order.total_price
 
         # Add total quantity of items in the order
-        for item in order.items.all():
-            phone_number_data[phone_number]["total_quantity"] += item.unit
+            for item in order.items.all():
+                phone_number_data[phone_number]["total_quantity"] += item.unit
 
-    # Prepare the response data
-    response_data = []
-    for data in phone_number_data.values():
-        total_amount = data["total_amount"]
-        total_quantity = data["total_quantity"]
+        # Prepare the response data
+        response_data = []
+        for data in phone_number_data.values():
+            total_amount = data["total_amount"]
+            total_quantity = data["total_quantity"]
 
         # Calculate average amount per unit
-        average_amount = total_amount / total_quantity if total_quantity > 0 else Decimal('0.00')
-        data["total_amount"] = str(total_amount)
-        data["average_amount"] = str(average_amount)
+            average_amount = total_amount / total_quantity if total_quantity > 0 else Decimal('0.00')
+            data["total_amount"] = str(total_amount)
+            data["average_amount"] = str(average_amount)
 
-        response_data.append(data)
+            response_data.append(data)
 
-    return Response(response_data, status=status.HTTP_200_OK)
+        return Response(response_data, status=status.HTTP_200_OK)
 
-
-    
     def get(self, request):
         """
         Retrieve sales summary for all users, including total amount, total quantity, and average amount.
@@ -456,37 +451,29 @@ class CustomerSummaryView(APIView):
             .filter(items__isnull=False)  # Ensure that the order has related items
             .prefetch_related('items')    # Prefetch related items to optimize queries
         )
-
         user_sales_data = {}
-
         # Loop through orders and aggregate sales data by customer
         for order in orders:
             fullname = order.fullname  # Adjust field name as needed
             phone_number = order.phone_number  # Adjust field name as needed
-
             if fullname not in user_sales_data:
                 user_sales_data[fullname] = {
                     "total_amount": Decimal('0.00'),
                     "total_quantity": 0
                 }
-            
-
             # Add total_price from Order model
             user_sales_data[fullname]["total_amount"] += order.total_price
 
             # Add quantity from related items
             for item in order.items.all():
                 user_sales_data[fullname]["total_quantity"] += item.unit
-
         # Prepare the response data with calculated averages
         response_data = []
         for fullname, data in user_sales_data.items():
             total_amount = data["total_amount"]
             total_quantity = data["total_quantity"]
-
             # Calculate average amount per unit (if there are any units sold)
             average_amount = total_amount / total_quantity if total_quantity > 0 else Decimal('0.00')
-
             response_data.append({
                 "fullname": fullname,
                 "phone_number":phone_number,
@@ -494,7 +481,6 @@ class CustomerSummaryView(APIView):
                 "total_quantity": total_quantity,
                 "average_amount": str(average_amount)  # Average amount per unit
             })
-
         return Response(response_data, status=status.HTTP_200_OK)
 
 

@@ -1,15 +1,19 @@
+from amqp import NotFound
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from .models import Module
+from rest_framework.permissions import IsAuthenticated 
 from .serializers import ModuleSerializer
 
 class ModuleListView(APIView):
+    permission_classes = [IsAuthenticated] 
     def get(self, request):
         modules = Module.objects.all()
         serializer = ModuleSerializer(modules, many=True)
         return Response({"success": True, "data": serializer.data}, status=status.HTTP_200_OK)
 class ModulePostView(APIView):
+    permission_classes=[IsAuthenticated]
     def post(self, request):
         serializer = ModuleSerializer(data=request.data)
         if serializer.is_valid():
@@ -17,6 +21,7 @@ class ModulePostView(APIView):
             return Response({"success": True, "data": serializer.data}, status=status.HTTP_201_CREATED)
         return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 class ModuleDeleteView(APIView):
+    permission_classes=[IsAuthenticated]
     def delete(self, request, pk):
         try:
             # Find the module by its primary key (ID)

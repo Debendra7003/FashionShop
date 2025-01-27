@@ -179,8 +179,7 @@ class CompanyViewSet(APIView):
             return Response({"message": "Company with this GST not found."}, status=status.HTTP_404_NOT_FOUND)
 #Catagory view set
 class CategoryView(APIView):
-   
-
+    permission_classes = [IsAuthenticated] 
     def get(self, request, category_name=None, *args, **kwargs):
      if category_name:
         try:
@@ -346,6 +345,7 @@ class CategoryView(APIView):
     
 # Retrieve related subcategories for the given category    
 class CategorySubCategoryView(APIView):
+    permission_classes = [IsAuthenticated] 
     def get(self, request, category_name, *args, **kwargs):
         try:
             # Retrieve the category by category_name
@@ -451,6 +451,7 @@ class ItemViewSet(APIView):
     #             "errors": serializer.errors
     #         }, status=status.HTTP_400_BAD_REQUEST)
 class ItemCreateOrUpdateView(APIView):
+    permission_classes = [IsAuthenticated] 
     """
     Create a new item or update stock_quantity for an existing item_code.
     """
@@ -559,6 +560,7 @@ class ItemCreateOrUpdateView(APIView):
 
 
 class ItemReportViewSet(APIView):
+    permission_classes = [IsAuthenticated] 
     #SearchQuery 
     def post(self, request):
         """
