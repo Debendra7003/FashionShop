@@ -93,7 +93,7 @@ class GenerateBarcodeView(APIView):
                 barcode_image = barcode.render(writer_options={
                     "font_size": 1,
                     "text_distance": 1,
-                    "module_width": 0.2,
+                    "module_width": 0.2,  
                     "module_height": 5,
                     "write_text": False
                 })
@@ -208,6 +208,6 @@ class BarcodeFetchView(APIView):
             return Response(serializer.data, status=status.HTTP_200_OK)
         except BarcodeGen.DoesNotExist:
             return Response(
-                {"error": "Barcode not found."}, 
+                {"error": "Details of Barcode not found."}, 
                 status=status.HTTP_404_NOT_FOUND
             )
